@@ -1,26 +1,35 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Cell, toNano } from '@ton/core';
+import { beginCell, Cell, toNano } from '@ton/core';
 import { Minter } from '../wrappers/Minter';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 
 describe('Minter', () => {
     let code: Cell;
+    let minterItemCode: Cell;
 
     beforeAll(async () => {
         code = await compile('Minter');
+        minterItemCode = await compile('MinterItem');
     });
 
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
+    let collection: SandboxContract<TreasuryContract>;
     let minter: SandboxContract<Minter>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
-
-        minter = blockchain.openContract(Minter.createFromConfig({}, code));
-
         deployer = await blockchain.treasury('deployer');
+        collection = await blockchain.treasury('collection');
+
+        minter = blockchain.openContract(Minter.createFromConfig({
+            adminAddress: deployer.address,
+            collectionAddress: collection.address,
+            servicePublicKey: BigInt('0x' + '00'.repeat(32)),
+            startTime: BigInt(Math.floor(Date.now() / 1000)),
+            minterItemCode: minterItemCode,
+        }, code));
 
         const deployResult = await minter.sendDeploy(deployer.getSender(), toNano('0.05'));
 

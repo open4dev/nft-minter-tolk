@@ -38,4 +38,20 @@ export class Minter implements Contract {
             body: beginCell().endCell(),
         });
     }
+
+    async sendAdminClaim(provider: ContractProvider, via: Sender, value: bigint, queryId: bigint = 0n) {
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(0x1B9403D8, 32)
+                .storeUint(queryId, 64)
+                .endCell(),
+        });
+    }
+
+    async getBalance(provider: ContractProvider): Promise<bigint> {
+        const state = await provider.getState();
+        return state.balance;
+    }
 }

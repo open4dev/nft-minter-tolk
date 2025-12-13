@@ -14,3 +14,8 @@ dist
 
 # VIM
 Session.vim
+
+# Service secrets - NEVER COMMIT
+service/.keys.json
+.env
+*.env.local

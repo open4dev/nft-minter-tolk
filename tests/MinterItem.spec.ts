@@ -2,7 +2,7 @@ import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, Cell, toNano } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { MinterItem } from '../wrappers/MinterItem';
+import { MinterItem, hashContentWithPrice } from '../wrappers/MinterItem';
 import nacl from 'tweetnacl';
 import { convertPublicKeyToBigInt } from '../wrappers/utils';
 
@@ -17,8 +17,9 @@ describe('MinterItem', () => {
     let minter: SandboxContract<TreasuryContract>;
     let minterItem: SandboxContract<MinterItem>;
     let owner: SandboxContract<TreasuryContract>;
-    let keys;
-    const content = beginCell().storeStringTail('https://example.com/nft.json').endCell()
+    let keys: nacl.SignKeyPair;
+    const content = beginCell().storeStringTail('https://example.com/nft.json').endCell();
+    const price = toNano('1'); // 1 TON price
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
@@ -29,13 +30,16 @@ describe('MinterItem', () => {
         minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
             startTime: BigInt(Math.floor(new Date().getTime() / 1000)),
+            price: price,
             minterAddress: minter.address,
             ownerAddress: owner.address,
             servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
             contentNftItem: content,
         }, code));
 
-        const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(content.hash(), keys.secretKey)).toString('hex'));
+        // Sign hash(content + price)
+        const dataHash = hashContentWithPrice(content, price);
+        const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
         const deployResult = await minterItem.sendDeployWithMint(owner.getSender(), toNano('2'), signature);
 
         expect(deployResult.transactions).toHaveTransaction({

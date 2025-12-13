@@ -1,15 +1,63 @@
-import { toNano } from '@ton/core';
+import { Address, toNano } from '@ton/core';
 import { Minter } from '../wrappers/Minter';
 import { compile, NetworkProvider } from '@ton/blueprint';
+import { getOrCreateKeyPair, publicKeyToBigInt, displayKeyInfo } from '../service/keys';
+import path from 'path';
 
 export async function run(provider: NetworkProvider) {
-    const minter = provider.open(Minter.createFromConfig({
+    // Load service keys
+    const keysPath = path.join(__dirname, '../service/.keys.json');
+    const keys = getOrCreateKeyPair(keysPath);
 
-    }, await compile('Minter')));
+    console.log('\n=== Deploying Minter Contract ===');
+    displayKeyInfo(keys);
 
-    await minter.sendDeploy(provider.sender(), toNano('0.05'));
+    const adminAddress = provider.sender().address;
+    if (!adminAddress) {
+        throw new Error('Wallet address not found');
+    }
 
+    // Set COLLECTION_ADDRESS before running
+    const collectionAddress = process.env.COLLECTION_ADDRESS;
+    if (!collectionAddress) {
+        throw new Error('COLLECTION_ADDRESS environment variable not set. Deploy NFTCollection first.');
+    }
+
+    const startTime = process.env.START_TIME
+        ? parseInt(process.env.START_TIME)
+        : Math.floor(Date.now() / 1000);
+
+    console.log('\nConfiguration:');
+    console.log('  Admin:', adminAddress.toString());
+    console.log('  Collection:', collectionAddress);
+    console.log('  Start Time:', new Date(startTime * 1000).toISOString());
+    console.log('  Service Public Key:', publicKeyToBigInt(keys.publicKey).toString());
+
+    const minterCode = await compile('Minter');
+    const minterItemCode = await compile('MinterItem');
+
+    const minter = provider.open(
+        Minter.createFromConfig(
+            {
+                adminAddress: adminAddress,
+                collectionAddress: Address.parse(collectionAddress),
+                servicePublicKey: publicKeyToBigInt(keys.publicKey),
+                startTime: BigInt(startTime),
+                minterItemCode: minterItemCode,
+            },
+            minterCode
+        )
+    );
+
+    console.log('\nMinter Address:', minter.address.toString());
+
+    await minter.sendDeploy(provider.sender(), toNano('0.1'));
     await provider.waitForDeploy(minter.address);
 
-    // run methods on `minter`
+    console.log('\n=== Deployment Complete ===');
+    console.log('Minter deployed at:', minter.address.toString());
+    console.log('\nSet these environment variables for service:');
+    console.log(`  export MINTER_ADDRESS="${minter.address.toString()}"`);
+    console.log(`  export START_TIME="${startTime}"`);
+    console.log(`  export COLLECTION_ADDRESS="${collectionAddress}"`);
 }

@@ -1,18 +1,20 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
-export type MinterConfig = {
+export type MinterItemConfig = {
     isMinted: boolean;
     startTime: bigint;
+    price: bigint;
     minterAddress: Address;
     ownerAddress: Address;
     servicePublicKey: bigint;
     contentNftItem: Cell;
 };
 
-export function minterConfigToCell(config: MinterConfig): Cell {
+export function minterItemConfigToCell(config: MinterItemConfig): Cell {
     return beginCell()
         .storeBit(config.isMinted)
         .storeUint(config.startTime, 32)
+        .storeCoins(config.price)
         .storeAddress(config.minterAddress)
         .storeAddress(config.ownerAddress)
         .storeUint(config.servicePublicKey, 256)
@@ -27,8 +29,8 @@ export class MinterItem implements Contract {
         return new MinterItem(address);
     }
 
-    static createFromConfig(config: MinterConfig, code: Cell, workchain = 0) {
-        const data = minterConfigToCell(config);
+    static createFromConfig(config: MinterItemConfig, code: Cell, workchain = 0) {
+        const data = minterItemConfigToCell(config);
         const init = { code, data };
         return new MinterItem(contractAddress(workchain, init), init);
     }
@@ -44,4 +46,13 @@ export class MinterItem implements Contract {
                 .endCell(),
         });
     }
+}
+
+// Helper to hash content + price (must match contract's hashContentWithPrice)
+export function hashContentWithPrice(content: Cell, price: bigint): Buffer {
+    const cell = beginCell()
+        .storeRef(content)
+        .storeCoins(price)
+        .endCell();
+    return cell.hash();
 }
