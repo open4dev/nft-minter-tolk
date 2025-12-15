@@ -59,7 +59,6 @@ route('/info', async (ctx) => ({
     network: ctx.config.network,
     minterAddress: ctx.config.minterAddress,
     collectionAddress: ctx.config.collectionAddress,
-    startTime: ctx.config.startTime,
     defaultPrice: ctx.config.defaultPrice.toString(),
     defaultPriceFormatted: (Number(ctx.config.defaultPrice) / 1e9).toFixed(2) + ' TON',
 }));
@@ -81,15 +80,14 @@ route('/sign', async (ctx, req, body) => {
     const publicKey = publicKeyToBigInt(ctx.keys.publicKey);
     const price = parsePrice(priceStr, ctx.config.defaultPrice);
 
-    // Generate signed NFT data (signs hash(content + price))
-    const signedData = generateSignedNftForUser(ctx.keys, metadataUrl, price);
+    // Generate signed NFT data (signs hash(content + price + ownerAddress))
+    const signedData = generateSignedNftForUser(ctx.keys, metadataUrl, price, owner);
 
     // Prepare full mint data for user
     const mintData = prepareMintDataForUser(
         owner,
         minter,
         publicKey,
-        ctx.config.startTime,
         price,
         signedData.content,
         signedData.signature,
@@ -129,7 +127,6 @@ route('/calculate-address', async (ctx, req, body) => {
         owner,
         minter,
         publicKey,
-        ctx.config.startTime,
         price,
         content,
         ctx.minterItemCode
@@ -180,13 +177,12 @@ route('/batch-sign', async (ctx, req, body) => {
     const results = items.map((item: { ownerAddress: string; metadataUrl: string; price?: string }) => {
         const owner = Address.parse(item.ownerAddress);
         const price = parsePrice(item.price, ctx.config.defaultPrice);
-        const signedData = generateSignedNftForUser(ctx.keys, item.metadataUrl, price);
+        const signedData = generateSignedNftForUser(ctx.keys, item.metadataUrl, price, owner);
 
         const mintData = prepareMintDataForUser(
             owner,
             minter,
             publicKey,
-            ctx.config.startTime,
             price,
             signedData.content,
             signedData.signature,

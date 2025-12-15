@@ -27,7 +27,7 @@ describe('Minter', () => {
             adminAddress: deployer.address,
             collectionAddress: collection.address,
             servicePublicKey: BigInt('0x' + '00'.repeat(32)),
-            startTime: BigInt(Math.floor(Date.now() / 1000)),
+            isMintEnabled: true,
             minterItemCode: minterItemCode,
         }, code));
 

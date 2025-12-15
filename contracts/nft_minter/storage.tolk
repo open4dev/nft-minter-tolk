@@ -1,9 +1,8 @@
-// Minter storage
 struct MinterStorage {
     adminAddress: address;
     collectionAddress: address;
     servicePublicKey: uint256;
-    startTime: uint32;
+    isMintEnabled: bool;
     minterItemCode: cell;
 }
 
@@ -11,15 +10,17 @@ fun MinterStorage.load(): MinterStorage {
     return MinterStorage.fromCell(contract.getData());
 }
 
-// MinterItem storage
+fun MinterStorage.save(self) {
+    contract.setData(self.toCell());
+}
+
 struct MinterItemStorage {
     isMinted: bool;
-    startTime: uint32;
     price: coins;
     minterAddress: address;
     ownerAddress: address;
     servicePublicKey: uint256;
-    contentNftItem: cell;
+    contentNftItem: cell?;
 }
 
 fun MinterItemStorage.load(): MinterItemStorage {

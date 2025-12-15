@@ -106,7 +106,6 @@ NETWORK=testnet
 TONCENTER_API_KEY=your_api_key
 MINTER_ADDRESS=EQxxxxx
 COLLECTION_ADDRESS=EQxxxxx
-START_TIME=1234567890
 DEFAULT_PRICE=1
 PORT=3000
 ```
@@ -162,7 +161,7 @@ Response:
 
 ### Test Minting via Service
 
-With the service running, test the full mint flow:
+With the service running, test the full mint flow using the `testMintViaService` script:
 
 ```bash
 # Terminal 1: Start the service
@@ -170,6 +169,53 @@ cd service && npx ts-node index.ts serve
 
 # Terminal 2: Run the test script
 METADATA_URL=https://example.com/nft/1.json PRICE=1 npx blueprint run testMintViaService --testnet
+```
+
+The script will:
+1. Connect to the signing service
+2. Request signed NFT data for your wallet address
+3. Send the mint transaction with state init and message body
+4. Wait for MinterItem deployment confirmation
+
+**Environment Variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SERVICE_URL` | URL of the signing service | `http://localhost:3000` |
+| `METADATA_URL` | NFT metadata JSON URL | `https://example.com/nft/test.json` |
+| `PRICE` | Price in TON | `1` |
+
+**Example Output:**
+
+```
+=== Test Mint via Service ===
+
+Service URL: http://localhost:3000
+Owner address: EQxxxxx
+Metadata URL: https://example.com/nft/1.json
+Price: 1 TON
+
+Service is healthy.
+
+Service info:
+  Minter address: EQyyyyy
+  Default price: 1.00 TON
+
+Received mint data:
+  MinterItem address: EQzzzzz
+  Price: 1.00 TON
+  Data hash: abc123...
+
+Sending mint transaction...
+  Value: 1.1500 TON
+
+Transaction sent!
+MinterItem address: EQzzzzz
+
+Waiting for deployment...
+MinterItem deployed successfully!
+
+=== Done ===
 ```
 
 ### Client Integration Example
@@ -203,32 +249,56 @@ await executeMint(client, wallet, secretKey, mintData);
 Defined in `contracts/nft_minter/fees-management.tolk`:
 
 ```tolk
-const MIN_TONS_FOR_STORAGE: int = ton("0.02");
-const MINTER_MIN_RESERVE: int = ton("0.05");
-const NFT_DEPLOY_AMOUNT: int = ton("0.05");
+const MIN_TONS_FOR_STORAGE: int = ton("0.02");  // Minimum balance for contracts
+const NFT_DEPLOY_AMOUNT: int = ton("0.05");     // Amount for NFT deployment
 ```
 
 ## Error Codes
 
 | Code | Constant | Description |
 |------|----------|-------------|
-| 201 | ERROR_MINT_NOT_ALLOWED | Mint before start time |
+| 201 | ERROR_MINT_DISABLED | Minting is disabled by admin |
 | 202 | ERROR_NOT_OWNER_TRYING_TO_MINT | Wrong sender address |
 | 203 | ERROR_NOT_ENOUGH_FUNDS_TO_MINT | Insufficient funds (less than price) |
 | 204 | ERROR_MINTED_ALREADY | NFT already minted |
 | 205 | ERROR_SIGNATURE_INVALID | Invalid service signature |
 | 206 | ERROR_MINT_ITEM_ADDRESS_MISMATCH | Wrong MinterItem address |
-| 207 | ERROR_NOT_ADMIN | Not admin for claim |
+| 207 | ERROR_NOT_ADMIN | Not admin for operation |
 | 208 | ERROR_NOT_ENOUGH_BALANCE | Insufficient balance for claim |
+| 209 | ERROR_CONTENT_NOT_FOUND | Content cleared (internal error) |
 
 ## Admin Functions
 
 ### Claim Accumulated TON
 
-The admin can claim accumulated TON from the Minter contract (keeps 0.05 TON reserve):
+The admin can claim accumulated TON from the Minter contract (keeps 0.02 TON reserve):
 
 ```typescript
 await minter.sendAdminClaim(admin.getSender(), toNano('0.05'));
+```
+
+### Toggle Minting
+
+The admin can enable or disable minting:
+
+```typescript
+// Disable minting
+await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), false);
+
+// Enable minting
+await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), true);
+```
+
+### Transfer Collection Ownership
+
+The admin can transfer ownership of the NFT collection to another address:
+
+```typescript
+await minter.sendAdminTransferCollectionOwnership(
+    admin.getSender(),
+    toNano('0.05'),
+    newOwnerAddress
+);
 ```
 
 ## License

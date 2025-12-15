@@ -4,7 +4,7 @@ export type MinterConfig = {
     adminAddress: Address;
     collectionAddress: Address;
     servicePublicKey: bigint;
-    startTime: bigint;
+    isMintEnabled: boolean;
     minterItemCode: Cell;
 };
 
@@ -13,7 +13,7 @@ export function minterConfigToCell(config: MinterConfig): Cell {
         .storeAddress(config.adminAddress)
         .storeAddress(config.collectionAddress)
         .storeUint(config.servicePublicKey, 256)
-        .storeUint(config.startTime, 32)
+        .storeBit(config.isMintEnabled)
         .storeRef(config.minterItemCode)
     .endCell();
 }
@@ -46,6 +46,30 @@ export class Minter implements Contract {
             body: beginCell()
                 .storeUint(0x1B9403D8, 32)
                 .storeUint(queryId, 64)
+                .endCell(),
+        });
+    }
+
+    async sendAdminToggleMint(provider: ContractProvider, via: Sender, value: bigint, enableMint: boolean, queryId: bigint = 0n) {
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(0x2A7B8C1F, 32)
+                .storeUint(queryId, 64)
+                .storeBit(enableMint)
+                .endCell(),
+        });
+    }
+
+    async sendAdminTransferCollectionOwnership(provider: ContractProvider, via: Sender, value: bigint, newOwnerAddress: Address, queryId: bigint = 0n) {
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(0x3C5F7E9A, 32)
+                .storeUint(queryId, 64)
+                .storeAddress(newOwnerAddress)
                 .endCell(),
         });
     }

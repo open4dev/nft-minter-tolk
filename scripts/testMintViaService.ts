@@ -75,7 +75,6 @@ export async function run(provider: NetworkProvider) {
     const info = await infoResponse.json();
     console.log('\nService info:');
     console.log('  Minter address:', info.minterAddress || '(not configured)');
-    console.log('  Start time:', info.startTime);
     console.log('  Default price:', info.defaultPriceFormatted);
 
     if (!info.minterAddress) {

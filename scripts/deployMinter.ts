@@ -23,14 +23,13 @@ export async function run(provider: NetworkProvider) {
         throw new Error('COLLECTION_ADDRESS environment variable not set. Deploy NFTCollection first.');
     }
 
-    const startTime = process.env.START_TIME
-        ? parseInt(process.env.START_TIME)
-        : Math.floor(Date.now() / 1000);
+    // Start with minting enabled by default, can be toggled by admin later
+    const isMintEnabled = process.env.MINT_ENABLED !== 'false';
 
     console.log('\nConfiguration:');
     console.log('  Admin:', adminAddress.toString());
     console.log('  Collection:', collectionAddress);
-    console.log('  Start Time:', new Date(startTime * 1000).toISOString());
+    console.log('  Mint Enabled:', isMintEnabled);
     console.log('  Service Public Key:', publicKeyToBigInt(keys.publicKey).toString());
 
     const minterCode = await compile('Minter');
@@ -42,7 +41,7 @@ export async function run(provider: NetworkProvider) {
                 adminAddress: adminAddress,
                 collectionAddress: Address.parse(collectionAddress),
                 servicePublicKey: publicKeyToBigInt(keys.publicKey),
-                startTime: BigInt(startTime),
+                isMintEnabled: isMintEnabled,
                 minterItemCode: minterItemCode,
             },
             minterCode
@@ -58,6 +57,5 @@ export async function run(provider: NetworkProvider) {
     console.log('Minter deployed at:', minter.address.toString());
     console.log('\nSet these environment variables for service:');
     console.log(`  export MINTER_ADDRESS="${minter.address.toString()}"`);
-    console.log(`  export START_TIME="${startTime}"`);
     console.log(`  export COLLECTION_ADDRESS="${collectionAddress}"`);
 }

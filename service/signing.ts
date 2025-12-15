@@ -1,10 +1,11 @@
 import nacl from 'tweetnacl';
-import { Cell, beginCell } from '@ton/core';
+import { Cell, beginCell, Address } from '@ton/core';
 import { KeyPair } from './keys';
 
 export interface SignedNFTData {
     content: Cell;
     price: bigint;
+    ownerAddress: Address;
     dataHash: Buffer;
     signature: bigint;
     signatureHex: string;
@@ -41,22 +42,24 @@ export function createOnChainNftContent(metadata: {
 }
 
 /**
- * Hash content + price (must match contract's hashContentWithPrice)
+ * Hash content + price + ownerAddress (must match contract's hashMintData)
+ * Including ownerAddress prevents signature replay attacks
  */
-export function hashContentWithPrice(content: Cell, price: bigint): Buffer {
+export function hashMintData(content: Cell, price: bigint, ownerAddress: Address): Buffer {
     const cell = beginCell()
         .storeRef(content)
         .storeCoins(price)
+        .storeAddress(ownerAddress)
         .endCell();
     return cell.hash();
 }
 
 /**
- * Sign NFT content + price with service private key
+ * Sign NFT content + price + ownerAddress with service private key
  * Returns signature as BigInt (512 bits)
  */
-export function signContentWithPrice(content: Cell, price: bigint, secretKey: Uint8Array): SignedNFTData {
-    const dataHash = hashContentWithPrice(content, price);
+export function signMintData(content: Cell, price: bigint, ownerAddress: Address, secretKey: Uint8Array): SignedNFTData {
+    const dataHash = hashMintData(content, price, ownerAddress);
     const signatureBytes = nacl.sign.detached(dataHash, secretKey);
     const signatureHex = Buffer.from(signatureBytes).toString('hex');
     const signature = BigInt('0x' + signatureHex);
@@ -64,6 +67,7 @@ export function signContentWithPrice(content: Cell, price: bigint, secretKey: Ui
     return {
         content,
         price,
+        ownerAddress,
         dataHash,
         signature,
         signatureHex,
@@ -76,10 +80,11 @@ export function signContentWithPrice(content: Cell, price: bigint, secretKey: Ui
 export function verifySignature(
     content: Cell,
     price: bigint,
+    ownerAddress: Address,
     signature: bigint,
     publicKey: Uint8Array
 ): boolean {
-    const dataHash = hashContentWithPrice(content, price);
+    const dataHash = hashMintData(content, price, ownerAddress);
     const signatureHex = signature.toString(16).padStart(128, '0');
     const signatureBytes = new Uint8Array(Buffer.from(signatureHex, 'hex'));
     return nacl.sign.detached.verify(dataHash, signatureBytes, publicKey);
@@ -91,10 +96,11 @@ export function verifySignature(
 export function generateSignedNftForUser(
     keys: KeyPair,
     metadataUrl: string,
-    price: bigint
+    price: bigint,
+    ownerAddress: Address
 ): SignedNFTData {
     const content = createNftContent(metadataUrl);
-    return signContentWithPrice(content, price, keys.secretKey);
+    return signMintData(content, price, ownerAddress, keys.secretKey);
 }
 
 /**
@@ -102,7 +108,7 @@ export function generateSignedNftForUser(
  */
 export function batchSignNfts(
     keys: KeyPair,
-    items: Array<{ metadataUrl: string; price: bigint }>
+    items: Array<{ metadataUrl: string; price: bigint; ownerAddress: Address }>
 ): SignedNFTData[] {
-    return items.map((item) => generateSignedNftForUser(keys, item.metadataUrl, item.price));
+    return items.map((item) => generateSignedNftForUser(keys, item.metadataUrl, item.price, item.ownerAddress));
 }

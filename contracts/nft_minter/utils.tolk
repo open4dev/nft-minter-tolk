@@ -5,14 +5,12 @@ fun calcDeployedMinterItem(
     ownerAddress: address,
     minterAddress: address,
     publicKey: int,
-    startTime: int,
     price: int,
     content: cell,
     minterItemCode: cell
 ): AutoDeployAddress {
     val emptyMinterItemStorage: MinterItemStorage = {
         isMinted: false,
-        startTime: startTime as uint32,
         price: price as coins,
         minterAddress,
         ownerAddress,
@@ -28,26 +26,25 @@ fun calcDeployedMinterItem(
     }
 }
 
-@inline
 fun calculateMinterItemAddress(
     ownerAddress: address,
     minterAddress: address,
     publicKey: int,
-    startTime: int,
     price: int,
     content: cell,
     minterItemCode: cell
 ): address {
-    val deployed = calcDeployedMinterItem(ownerAddress, minterAddress, publicKey, startTime, price, content, minterItemCode);
+    val deployed = calcDeployedMinterItem(ownerAddress, minterAddress, publicKey, price, content, minterItemCode);
     return deployed.calculateAddress();
 }
 
-// Hash content + price for signature verification
-@inline
-fun hashContentWithPrice(content: cell, price: int): int {
+// Hash content + price + ownerAddress for signature verification
+// Including ownerAddress prevents signature replay attacks
+fun hashMintData(content: cell, price: int, ownerAddress: address): int {
     return beginCell()
         .storeRef(content)
         .storeCoins(price)
+        .storeAddress(ownerAddress)
         .endCell()
         .hash();
 }

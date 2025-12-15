@@ -13,7 +13,17 @@ struct (0x1B9403D8) MsgAdminClaim {
     queryId: uint64;
 }
 
-type MinterInMsg = MsgInternalMintItem | MsgAdminClaim
+struct (0x2A7B8C1F) MsgAdminToggleMint {
+    queryId: uint64;
+    enableMint: bool;
+}
+
+struct (0x3C5F7E9A) MsgAdminTransferCollectionOwnership {
+    queryId: uint64;
+    newOwnerAddress: address;
+}
+
+type MinterInMsg = MsgInternalMintItem | MsgAdminClaim | MsgAdminToggleMint | MsgAdminTransferCollectionOwnership
 
 // ============================================
 // Incoming messages for MinterItem contract
@@ -39,3 +49,14 @@ struct (0x0505DC31) OutMsgInternalMint {
     ownerAddress: address;
     content: cell;
 }
+
+// ============================================
+// Bounced messages (first 256 bits of body)
+// ============================================
+
+// Bounced MsgInternalMintItem (only op + queryId due to BounceMode.Only256BitsOfBody)
+struct (0x0505DC31) BouncedMsgInternalMint {
+    queryId: uint64;
+}
+
+type MinterItemBouncedMsg = BouncedMsgInternalMint

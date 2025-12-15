@@ -21,18 +21,16 @@ export function packMinterItemData(
     ownerAddress: Address,
     minterAddress: Address,
     publicKey: bigint,
-    startTime: number,
     price: bigint,
     content: Cell
 ): Cell {
     return beginCell()
         .storeBit(false) // isMinted = false
-        .storeUint(startTime, 32)
         .storeCoins(price)
         .storeAddress(minterAddress)
         .storeAddress(ownerAddress)
         .storeUint(publicKey, 256)
-        .storeRef(content)
+        .storeMaybeRef(content) // optional, cleared after mint
         .endCell();
 }
 
@@ -43,12 +41,11 @@ export function calculateMinterItemStateInit(
     ownerAddress: Address,
     minterAddress: Address,
     publicKey: bigint,
-    startTime: number,
     price: bigint,
     content: Cell,
     minterItemCode: Cell
 ): { code: Cell; data: Cell } {
-    const data = packMinterItemData(ownerAddress, minterAddress, publicKey, startTime, price, content);
+    const data = packMinterItemData(ownerAddress, minterAddress, publicKey, price, content);
     return { code: minterItemCode, data };
 }
 
@@ -59,7 +56,6 @@ export function calculateMinterItemAddress(
     ownerAddress: Address,
     minterAddress: Address,
     publicKey: bigint,
-    startTime: number,
     price: bigint,
     content: Cell,
     minterItemCode: Cell,
@@ -69,7 +65,6 @@ export function calculateMinterItemAddress(
         ownerAddress,
         minterAddress,
         publicKey,
-        startTime,
         price,
         content,
         minterItemCode
@@ -177,7 +172,6 @@ export function prepareMintDataForUser(
     ownerAddress: Address,
     minterAddress: Address,
     publicKey: bigint,
-    startTime: number,
     price: bigint,
     content: Cell,
     signature: bigint,
@@ -187,7 +181,6 @@ export function prepareMintDataForUser(
         ownerAddress,
         minterAddress,
         publicKey,
-        startTime,
         price,
         content,
         minterItemCode

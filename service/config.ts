@@ -9,9 +9,6 @@ export interface ServiceConfig {
     minterAddress?: string;
     collectionAddress?: string;
 
-    // Timing
-    startTime: number; // Unix timestamp
-
     // Pricing
     defaultPrice: bigint; // Default NFT price in nanoTON
 
@@ -24,7 +21,6 @@ export const defaultConfig: ServiceConfig = {
     toncenterApiKey: process.env.TONCENTER_API_KEY,
     minterAddress: process.env.MINTER_ADDRESS,
     collectionAddress: process.env.COLLECTION_ADDRESS,
-    startTime: parseInt(process.env.START_TIME || String(Math.floor(Date.now() / 1000))),
     defaultPrice: toNano(process.env.DEFAULT_PRICE || '1'), // Default 1 TON
     port: parseInt(process.env.PORT || '3000'),
 };

@@ -3,9 +3,9 @@ import { beginCell, Cell, toNano, Address } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { Minter } from '../wrappers/Minter';
-import { MinterItem, hashContentWithPrice } from '../wrappers/MinterItem';
+import { MinterItem, hashMintData } from '../wrappers/MinterItem';
 import nacl from 'tweetnacl';
-import { convertPublicKeyToBigInt, MINTER_MIN_RESERVE, MIN_TONS_FOR_STORAGE, NFT_DEPLOY_AMOUNT } from '../wrappers/utils';
+import { convertPublicKeyToBigInt, MIN_TONS_FOR_STORAGE, NFT_DEPLOY_AMOUNT } from '../wrappers/utils';
 
 const OP_INTERNAL_MINT_ITEM = 0x0505DC31;
 
@@ -24,7 +24,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
     let user: SandboxContract<TreasuryContract>;
     let minter: SandboxContract<Minter>;
     let keys: nacl.SignKeyPair;
-    let startTime: bigint;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
@@ -32,14 +31,13 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
         collection = await blockchain.treasury('collection');
         user = await blockchain.treasury('user');
         keys = nacl.sign.keyPair();
-        startTime = BigInt(Math.floor(Date.now() / 1000));
 
-        // Deploy Minter
+        // Deploy Minter with minting enabled
         minter = blockchain.openContract(Minter.createFromConfig({
             adminAddress: admin.address,
             collectionAddress: collection.address,
             servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
-            startTime: startTime,
+            isMintEnabled: true,
             minterItemCode: minterItemCode,
         }, minterCode));
 
@@ -60,7 +58,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
         // Create MinterItem with the same parameters that Minter will compute
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -68,8 +65,8 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        // Sign hash(content + price) with service key
-        const dataHash = hashContentWithPrice(content, price);
+        // Sign hash(content + price + ownerAddress) with service key
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
 
         // User deploys and mints via MinterItem
@@ -108,7 +105,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
         // Create MinterItem for user
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -116,7 +112,7 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        const dataHash = hashContentWithPrice(content, price);
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
 
         // Attacker tries to mint (should fail with ERROR_NOT_OWNER_TRYING_TO_MINT = 202)
@@ -137,7 +133,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
 
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -147,7 +142,7 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
 
         // Wrong signature (signing different content)
         const wrongContent = beginCell().storeStringTail('https://wrong.com/nft.json').endCell();
-        const wrongDataHash = hashContentWithPrice(wrongContent, price);
+        const wrongDataHash = hashMintData(wrongContent, price, user.address);
         const wrongSignature = BigInt('0x' + Buffer.from(nacl.sign.detached(wrongDataHash, keys.secretKey)).toString('hex'));
 
         // User tries to mint with wrong signature (should fail with ERROR_SIGNATURE_INVALID = 205)
@@ -168,7 +163,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
 
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -176,7 +170,7 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        const dataHash = hashContentWithPrice(content, price);
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
 
         // First mint - should succeed
@@ -193,15 +187,16 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
         });
     });
 
-    it('should reject mint before start time', async () => {
+    it('should reject mint when minting is disabled and bounce back to user', async () => {
+        // First disable minting
+        await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), false);
+
         const content = beginCell().storeStringTail('https://example.com/nft.json').endCell();
         const price = toNano('1');
-        const futureStartTime = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour in future
 
-        // Create MinterItem with future start time
+        // Create MinterItem
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: futureStartTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -209,18 +204,132 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        const dataHash = hashContentWithPrice(content, price);
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
 
-        // Try to mint before start time (should fail with ERROR_MINT_NOT_ALLOWED = 201)
+        // Record user balance before
+        const userBalanceBefore = await user.getBalance();
+
+        // Try to mint when disabled - MinterItem succeeds but Minter rejects (ERROR_MINT_DISABLED = 201)
         const mintResult = await minterItem.sendDeployWithMint(user.getSender(), toNano('2'), signature);
 
+        // MinterItem deploys and sends message
         expect(mintResult.transactions).toHaveTransaction({
             from: user.address,
             to: minterItem.address,
             deploy: true,
+            success: true,
+        });
+
+        // Minter should fail with ERROR_MINT_DISABLED
+        expect(mintResult.transactions).toHaveTransaction({
+            from: minterItem.address,
+            to: minter.address,
             success: false,
             exitCode: 201,
+        });
+
+        // Bounced message should be handled by MinterItem
+        expect(mintResult.transactions).toHaveTransaction({
+            from: minter.address,
+            to: minterItem.address,
+            success: true,
+        });
+
+        // User should receive funds back
+        const refundTx = mintResult.transactions.find(
+            tx => tx.inMessage?.info.type === 'internal' &&
+                  tx.inMessage.info.src.equals(minterItem.address) &&
+                  tx.inMessage.info.dest.equals(user.address)
+        );
+        expect(refundTx).toBeDefined();
+
+        // Verify refund amount is substantial (user sent 2 TON, should get back most of it)
+        const refundValue = refundTx?.inMessage?.info.type === 'internal'
+            ? refundTx.inMessage.info.value.coins
+            : 0n;
+        expect(refundValue).toBeGreaterThan(toNano('1.5')); // Should get back > 1.5 TON of the 2 TON sent
+
+        // User balance should not have dropped significantly (only gas fees lost)
+        const userBalanceAfter = await user.getBalance();
+        const userLoss = userBalanceBefore - userBalanceAfter;
+        expect(userLoss).toBeLessThan(toNano('0.1')); // User should lose less than 0.1 TON in gas
+    });
+
+    it('should allow user to retry mint after bounce when admin enables minting', async () => {
+        // First disable minting
+        await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), false);
+
+        const content = beginCell().storeStringTail('https://example.com/nft.json').endCell();
+        const price = toNano('1');
+
+        // Create MinterItem
+        const minterItem = blockchain.openContract(MinterItem.createFromConfig({
+            isMinted: false,
+            price: price,
+            minterAddress: minter.address,
+            ownerAddress: user.address,
+            servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
+            contentNftItem: content,
+        }, minterItemCode));
+
+        const dataHash = hashMintData(content, price, user.address);
+        const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
+
+        // First attempt - mint disabled, should bounce
+        const firstAttempt = await minterItem.sendDeployWithMint(user.getSender(), toNano('2'), signature);
+
+        // Verify it bounced
+        expect(firstAttempt.transactions).toHaveTransaction({
+            from: minterItem.address,
+            to: minter.address,
+            success: false,
+            exitCode: 201, // ERROR_MINT_DISABLED
+        });
+
+        // Admin enables minting
+        await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), true);
+
+        // User retries - should succeed now
+        const retryResult = await minterItem.sendMint(user.getSender(), toNano('2'), signature);
+
+        // MinterItem should process successfully
+        expect(retryResult.transactions).toHaveTransaction({
+            from: user.address,
+            to: minterItem.address,
+            success: true,
+        });
+
+        // Minter should receive and process
+        expect(retryResult.transactions).toHaveTransaction({
+            from: minterItem.address,
+            to: minter.address,
+            success: true,
+        });
+
+        // Collection should receive DeployNft
+        expect(retryResult.transactions).toHaveTransaction({
+            from: minter.address,
+            to: collection.address,
+            success: true,
+        });
+    });
+
+    it('should allow admin to toggle minting on and off', async () => {
+        // Disable minting
+        const disableResult = await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), false);
+        expect(disableResult.transactions).toHaveTransaction({
+            from: admin.address,
+            to: minter.address,
+            success: true,
+        });
+
+        // Enable minting
+        const enableResult = await minter.sendAdminToggleMint(admin.getSender(), toNano('0.05'), true);
+        expect(enableResult.transactions).toHaveTransaction({
+            from: admin.address,
+            to: minter.address,
+            success: true,
         });
     });
 
@@ -230,7 +339,6 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
 
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -238,7 +346,7 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        const dataHash = hashContentWithPrice(content, price);
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
 
         // User tries to mint with only 1 TON (should fail with ERROR_NOT_ENOUGH_FUNDS_TO_MINT = 203)
@@ -309,9 +417,53 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
             success: true,
         });
 
-        // Minter balance should be reduced (keeping MINTER_MIN_RESERVE)
+        // Minter balance should be reduced (keeping MIN_TONS_FOR_STORAGE)
         const balanceAfter = await minter.getBalance();
-        expect(balanceAfter).toBeLessThan(MINTER_MIN_RESERVE * 2n);
+        expect(balanceAfter).toBeLessThan(MIN_TONS_FOR_STORAGE * 2n);
+    });
+
+    it('should allow admin to transfer collection ownership', async () => {
+        const newOwner = await blockchain.treasury('new-owner');
+
+        // Admin transfers collection ownership
+        const transferResult = await minter.sendAdminTransferCollectionOwnership(
+            admin.getSender(),
+            toNano('0.05'),
+            newOwner.address
+        );
+
+        expect(transferResult.transactions).toHaveTransaction({
+            from: admin.address,
+            to: minter.address,
+            success: true,
+            outMessagesCount: 1,
+        });
+
+        // Minter should send ChangeCollectionAdmin to collection
+        expect(transferResult.transactions).toHaveTransaction({
+            from: minter.address,
+            to: collection.address,
+            success: true,
+        });
+    });
+
+    it('should reject transfer collection ownership from non-admin', async () => {
+        const attacker = await blockchain.treasury('attacker');
+        const newOwner = await blockchain.treasury('new-owner');
+
+        // Attacker tries to transfer ownership
+        const transferResult = await minter.sendAdminTransferCollectionOwnership(
+            attacker.getSender(),
+            toNano('0.05'),
+            newOwner.address
+        );
+
+        expect(transferResult.transactions).toHaveTransaction({
+            from: attacker.address,
+            to: minter.address,
+            success: false,
+            exitCode: 207, // ERROR_NOT_ADMIN
+        });
     });
 
     it('should reject admin claim from non-admin (ERROR_NOT_ADMIN)', async () => {
@@ -336,26 +488,27 @@ describe('Integration: MinterItem -> Minter -> Collection', () => {
     });
 
     it('should reject admin claim with insufficient balance (ERROR_NOT_ENOUGH_BALANCE)', async () => {
-        // Create a NEW minter with different startTime to get a unique address
-        const uniqueStartTime = startTime + 9999n;
+        // Create a NEW minter with different config to get a unique address
+        const differentAdmin = await blockchain.treasury('different-admin');
         const minimalMinter = blockchain.openContract(Minter.createFromConfig({
-            adminAddress: admin.address,
+            adminAddress: differentAdmin.address, // Different admin = different address
             collectionAddress: collection.address,
             servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
-            startTime: uniqueStartTime, // Different startTime = different address
+            isMintEnabled: true,
             minterItemCode: minterItemCode,
         }, minterCode));
 
         // Deploy with minimal TON - just enough for contract creation
-        await minimalMinter.sendDeploy(admin.getSender(), MIN_TONS_FOR_STORAGE);
+        await minimalMinter.sendDeploy(differentAdmin.getSender(), toNano('0.01'));
 
-        // Try to claim when balance < MINTER_MIN_RESERVE
+        // Try to claim when balance < MIN_TONS_FOR_STORAGE
         // getOriginalBalance() includes incoming message value
-        // Total balance will be less than MINTER_MIN_RESERVE
-        const claimResult = await minimalMinter.sendAdminClaim(admin.getSender(), MIN_TONS_FOR_STORAGE);
+        // Total balance (~0.01 deploy + ~0.01 claim) < MIN_TONS_FOR_STORAGE (0.02)
+        // So toSendAmount will be <= 0, triggering ERROR_NOT_ENOUGH_BALANCE
+        const claimResult = await minimalMinter.sendAdminClaim(differentAdmin.getSender(), toNano('0.01'));
 
         expect(claimResult.transactions).toHaveTransaction({
-            from: admin.address,
+            from: differentAdmin.address,
             to: minimalMinter.address,
             success: false,
             exitCode: 208, // ERROR_NOT_ENOUGH_BALANCE
@@ -384,14 +537,13 @@ describe('Gas Usage Analysis', () => {
         const collection = await blockchain.treasury('collection');
         const user = await blockchain.treasury('user');
         const keys = nacl.sign.keyPair();
-        const startTime = BigInt(Math.floor(Date.now() / 1000));
 
         // Deploy Minter
         const minter = blockchain.openContract(Minter.createFromConfig({
             adminAddress: admin.address,
             collectionAddress: collection.address,
             servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
-            startTime: startTime,
+            isMintEnabled: true,
             minterItemCode: minterItemCode,
         }, minterCode));
 
@@ -403,7 +555,6 @@ describe('Gas Usage Analysis', () => {
 
         const minterItem = blockchain.openContract(MinterItem.createFromConfig({
             isMinted: false,
-            startTime: startTime,
             price: price,
             minterAddress: minter.address,
             ownerAddress: user.address,
@@ -411,7 +562,7 @@ describe('Gas Usage Analysis', () => {
             contentNftItem: content,
         }, minterItemCode));
 
-        const dataHash = hashContentWithPrice(content, price);
+        const dataHash = hashMintData(content, price, user.address);
         const signature = BigInt('0x' + Buffer.from(nacl.sign.detached(dataHash, keys.secretKey)).toString('hex'));
         const mintResult = await minterItem.sendDeployWithMint(user.getSender(), toNano('2'), signature);
 
@@ -471,12 +622,12 @@ describe('Gas Usage Analysis', () => {
         console.log(`   Combined Total: ${formatTon(minterDeployFee + totalGas)}`);
 
         console.log('\n--- Recommended Values ---');
-        console.log(`   Min value for mint tx: ${formatTon(totalGas + MINTER_MIN_RESERVE + NFT_DEPLOY_AMOUNT)} (with reserves)`);
+        console.log(`   Min value for mint tx: ${formatTon(totalGas + MIN_TONS_FOR_STORAGE + NFT_DEPLOY_AMOUNT)} (with reserves)`);
         console.log('\n=======================================\n');
 
         // Assertions to ensure gas is reasonable
-        expect(totalGas).toBeLessThan(MINTER_MIN_RESERVE * 2n); // Total gas should be less than 2x reserve
-        expect(minterDeployFee).toBeLessThan(MINTER_MIN_RESERVE); // Deploy should be less than reserve
+        expect(totalGas).toBeLessThan(MIN_TONS_FOR_STORAGE * 2n); // Total gas should be less than 2x reserve
+        expect(minterDeployFee).toBeLessThan(MIN_TONS_FOR_STORAGE); // Deploy should be less than reserve
     });
 
     it('should calculate gas for admin claim', async () => {
@@ -485,13 +636,12 @@ describe('Gas Usage Analysis', () => {
         const collection = await blockchain.treasury('collection');
         const user = await blockchain.treasury('user');
         const keys = nacl.sign.keyPair();
-        const startTime = BigInt(Math.floor(Date.now() / 1000));
 
         const minter = blockchain.openContract(Minter.createFromConfig({
             adminAddress: admin.address,
             collectionAddress: collection.address,
             servicePublicKey: convertPublicKeyToBigInt(keys.publicKey),
-            startTime: startTime,
+            isMintEnabled: true,
             minterItemCode: minterItemCode,
         }, minterCode));
 

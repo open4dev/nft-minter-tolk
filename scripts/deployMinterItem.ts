@@ -23,23 +23,23 @@ export async function run(provider: NetworkProvider) {
         throw new Error('MINTER_ADDRESS environment variable not set');
     }
 
-    const startTime = process.env.START_TIME
-        ? parseInt(process.env.START_TIME)
-        : Math.floor(Date.now() / 1000);
-
     // NFT metadata URL (change this for each NFT)
     const metadataUrl = process.env.METADATA_URL || 'https://example.com/nft/1.json';
+
+    // Price in TON (default 1 TON)
+    const priceInTon = process.env.PRICE ? parseFloat(process.env.PRICE) : 1;
+    const price = toNano(priceInTon.toString());
 
     console.log('\nConfiguration:');
     console.log('  Owner:', ownerAddress.toString());
     console.log('  Minter:', minterAddress);
-    console.log('  Start Time:', new Date(startTime * 1000).toISOString());
     console.log('  Metadata URL:', metadataUrl);
+    console.log('  Price:', priceInTon, 'TON');
 
-    // Generate signed NFT data
-    const signedData = generateSignedNftForUser(keys, metadataUrl);
+    // Generate signed NFT data (signs hash(content + price + ownerAddress))
+    const signedData = generateSignedNftForUser(keys, metadataUrl, price, ownerAddress);
     console.log('\nSignature:', signedData.signatureHex);
-    console.log('Content Hash:', signedData.contentHash.toString('hex'));
+    console.log('Data Hash:', signedData.dataHash.toString('hex'));
 
     const minterItemCode = await compile('MinterItem');
 
@@ -47,7 +47,7 @@ export async function run(provider: NetworkProvider) {
         MinterItem.createFromConfig(
             {
                 isMinted: false,
-                startTime: BigInt(startTime),
+                price: price,
                 minterAddress: Address.parse(minterAddress),
                 ownerAddress: ownerAddress,
                 servicePublicKey: publicKeyToBigInt(keys.publicKey),
@@ -59,20 +59,15 @@ export async function run(provider: NetworkProvider) {
 
     console.log('\nMinterItem Address:', minterItem.address.toString());
 
-    // Calculate price based on time passed
-    const now = Math.floor(Date.now() / 1000);
-    const daysPassed = Math.floor((now - startTime) / 86400);
-    const prices = [1, 2, 3, 5, 8, 10, 15, 20];
-    const priceIndex = Math.min(daysPassed, 7);
-    const price = prices[priceIndex];
+    // Deploy and mint (send price + gas buffer)
+    const gasBuffer = toNano('0.15');
+    const totalValue = price + gasBuffer;
 
-    console.log(`\nDays since start: ${daysPassed}`);
-    console.log(`Current price: ${price} TON`);
+    console.log(`\nSending ${(Number(totalValue) / 1e9).toFixed(2)} TON (${priceInTon} TON + gas)`);
 
-    // Deploy and mint
     await minterItem.sendDeployWithMint(
         provider.sender(),
-        toNano(price.toString()),
+        totalValue,
         signedData.signature
     );
 

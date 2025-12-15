@@ -44,9 +44,6 @@ async function main() {
         toncenterApiKey: process.env.TONCENTER_API_KEY,
         minterAddress: process.env.MINTER_ADDRESS,
         collectionAddress: process.env.COLLECTION_ADDRESS,
-        startTime: process.env.START_TIME
-            ? parseInt(process.env.START_TIME)
-            : Math.floor(Date.now() / 1000),
         defaultPrice: toNano(process.env.DEFAULT_PRICE || '1'),
         port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
     };
@@ -93,12 +90,12 @@ async function main() {
             }
 
             const price = parsePrice(priceArg, config.defaultPrice);
-            const signedData = generateSignedNftForUser(keys, metadataUrl, price);
+            const parsedOwnerAddress = Address.parse(ownerAddress);
+            const signedData = generateSignedNftForUser(keys, metadataUrl, price, parsedOwnerAddress);
             const mintData = prepareMintDataForUser(
-                Address.parse(ownerAddress),
+                parsedOwnerAddress,
                 Address.parse(config.minterAddress),
                 publicKeyToBigInt(keys.publicKey),
-                config.startTime,
                 price,
                 signedData.content,
                 signedData.signature,
