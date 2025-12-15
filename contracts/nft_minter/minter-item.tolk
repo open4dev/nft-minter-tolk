@@ -23,7 +23,6 @@ fun onInternalMessage(in: InMessage) {
 
             storage.mintItem(msg.queryId, content!!);
             storage.isMinted = true;
-            // Note: We keep contentNftItem in case mint bounces and user needs to retry
             storage.save();
         }
     }
