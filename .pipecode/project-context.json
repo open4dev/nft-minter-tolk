@@ -1,0 +1,23 @@
+{
+  "projectPath": "/Users/mac/var/www/nft-minter-tolk",
+  "paths": {
+    "entryPoints": [],
+    "configFiles": [
+      "package.json",
+      "tsconfig.json",
+      ".prettierrc"
+    ],
+    "sourceDir": null,
+    "testDir": "tests",
+    "componentsDir": null,
+    "directories": [
+      "scripts"
+    ],
+    "projectType": "typescript",
+    "packageManager": "npm",
+    "framework": null
+  },
+  "lastValidated": 1768227576901,
+  "lastUpdated": 1768227576901,
+  "version": 1
+}

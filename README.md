@@ -236,22 +236,13 @@ await executeMint(client, wallet, secretKey, mintData);
 
 | Operation | Cost |
 |-----------|------|
-| Minter Deploy | ~0.00014 TON |
+| Minter Deploy | ~0.00015 TON |
 | MinterItem Deploy + Mint | ~0.0017 TON |
-| Minter Process | ~0.0021 TON |
-| Full Mint Flow | ~0.0073 TON |
-| Admin Claim | ~0.0028 TON |
+| Minter Process | ~0.0019 TON |
+| Full Mint Flow | ~0.0075 TON |
+| Admin Claim | ~0.0029 TON |
 
-**Recommended mint transaction value: ~0.12 TON** (includes NFT deploy amount + reserves)
-
-## Fee Constants
-
-Defined in `contracts/nft_minter/fees-management.tolk`:
-
-```tolk
-const MIN_TONS_FOR_STORAGE: int = ton("0.02");  // Minimum balance for contracts
-const NFT_DEPLOY_AMOUNT: int = ton("0.05");     // Amount for NFT deployment
-```
+**Recommended mint transaction value: ~0.08 TON** (includes NFT deploy amount + reserves)
 
 ## Error Codes
 
